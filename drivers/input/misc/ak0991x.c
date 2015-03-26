@@ -138,7 +138,7 @@ struct ak0991x_data {
 	unsigned char	axis_order[3];
 	unsigned char	axis_sign[3];
 	/* A reserved device id */
-	unsigned char   company_id;
+	unsigned char	company_id;
 	unsigned char	device_id;
 
 	const struct ak0991x_bus_ops *bops;
@@ -240,8 +240,8 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 			buffer[2] = mode;
 			len = 3;
 		} else {
-		buffer[0] = AK0991X_ADDR_CNTL2;
-		buffer[1] = mode;
+			buffer[0] = AK0991X_ADDR_CNTL2;
+			buffer[1] = mode;
 			len = 2;
 		}
 
