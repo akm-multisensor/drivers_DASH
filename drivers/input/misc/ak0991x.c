@@ -120,6 +120,11 @@ struct ak0991x_data {
 	 * -1: error.
 	 */
 	atomic_t	selftest;
+	/* NSF flag.
+	 *  0 or +: valid.
+	 * -1: This device does not have NSF.
+	 */
+	atomic_t	cntl1;
 	/* IRQ number.  0:not set,  <0:set. */
 	int		irq;
 	/* A buffer to save FUSE ROM value */
@@ -170,7 +175,9 @@ static int akecs_busy_check(struct ak0991x_data *akm)
 static int akecs_setmode_measure(struct ak0991x_data *akm,
 		unsigned char mode, int interval)
 {
-	unsigned char buffer[2];
+	unsigned char buffer[3];
+	int cntl1;
+	int len;
 	int request_timer;
 	int err = 0;
 
@@ -223,10 +230,19 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 	atomic_set(&akm->interval, interval);
 
 	if (akm->input->users) {
+		cntl1 = atomic_read(&akm->cntl1);
+		if (cntl1 >= 0) {
+			buffer[0] = AK0991X_ADDR_CNTL1;
+			buffer[1] = (unsigned char)cntl1;
+			buffer[2] = mode;
+			len = 3;
+		} else {
 		buffer[0] = AK0991X_ADDR_CNTL2;
 		buffer[1] = mode;
+			len = 2;
+		}
 
-		err = akm->bops->txdata(akm->dev, buffer, sizeof(buffer));
+		err = akm->bops->txdata(akm->dev, buffer, len);
 		if (err) {
 			/* Error recovery */
 			atomic_set(&akm->mode, AK0991X_CNTL_PDN);
@@ -331,13 +347,7 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 
 	if (AK09912_DEVICE_ID == akm->device_id) {
 		/* AK09912: set default nsf */
-		buffer[0] = AK0991X_ADDR_CNTL1;
-		buffer[1] = AK0991X_NSF(AK0991X_DEFAULT_NSF);
-		err = akm->bops->txdata(akm->dev, buffer, 2);
-		if (err) {
-			dev_err(akm->dev, "%s: Can not read WIA.", __func__);
-			goto CHECKDEVICE_ERR;
-		}
+		atomic_set(&akm->cntl1, AK0991X_NSF(AK0991X_DEFAULT_NSF));
 	} else if (AK09911_DEVICE_ID == akm->device_id) {
 		/* AK09911: nop */
 		;
@@ -715,17 +725,14 @@ static ssize_t attr_nsf_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct ak0991x_data *akm = dev_get_drvdata(dev);
-	uint8_t read_cntl = AK0991X_ADDR_CNTL1;
-	int ret;
+	uint8_t read_cntl;
 
 	dev_dbg(dev, "%s called", __func__);
 
 	if (akm->device_id != AK09912_DEVICE_ID)
 		return -ENXIO;
 
-	ret = akm->bops->rxdata(akm->dev, &read_cntl, 1);
-	if (ret < 0)
-		return ret;
+	read_cntl = (uint8_t)atomic_read(&akm->cntl1);
 
 	read_cntl = ((read_cntl >> 5) & 0x03);
 	return sprintf(buf, "%d", read_cntl);
@@ -736,9 +743,7 @@ static ssize_t attr_nsf_store(struct device *dev,
 		const char *buf, size_t count)
 {
 	struct ak0991x_data *akm = dev_get_drvdata(dev);
-	uint8_t buffer[2];
 	long nsf;
-	int ret;
 
 	dev_dbg(dev, "%s called: '%s'(%d)", __func__, buf, count);
 
@@ -757,13 +762,7 @@ static ssize_t attr_nsf_store(struct device *dev,
 	if ((nsf < 0) || (3 < nsf))
 		return -EINVAL;
 
-	buffer[0] = AK0991X_ADDR_CNTL1;
-	buffer[1] = AK0991X_NSF(nsf);
-
-	ret = akm->bops->txdata(akm->dev, buffer, 2);
-
-	if (ret < 0)
-		return ret;
+	atomic_set(&akm->cntl1, AK0991X_NSF(nsf));
 
 	return count;
 }
@@ -1163,6 +1162,7 @@ struct ak0991x_data *ak0991x_probe(struct device *dev, int irq,
 	atomic_set(&akm->mode_rsv, AK0991X_CNTL_PDN);
 	atomic_set(&akm->interval, -1);
 	atomic_set(&akm->selftest, 0);
+	atomic_set(&akm->cntl1, -1);
 	akm->irq = irq;
 	akm->pdata = dev->platform_data;
 	/* Axis info */
