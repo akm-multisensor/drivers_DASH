@@ -12,7 +12,7 @@
 #include <linux/input.h>
 #endif
 
-#define AK8963_NAME "ak8963"
+#define AKM_DRIVER_NAME "ak8963"
 #define MSC_RX  MSC_SERIAL
 #define MSC_RY  MSC_PULSELED
 #define MSC_RZ  MSC_GESTURE
