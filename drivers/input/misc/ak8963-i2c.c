@@ -148,7 +148,7 @@ static const struct dev_pm_ops ak8963_i2c_pops = {
 
 /***** I2C interface ***********************************************/
 static const struct i2c_device_id ak8963_id[] = {
-	{AK8963_NAME, 0 },
+	{AKM_DRIVER_NAME, 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, ak8963_id);
@@ -158,7 +158,7 @@ static struct i2c_driver ak8963_i2c_driver = {
 	.remove		= ak8963_i2c_remove,
 	.id_table	= ak8963_id,
 	.driver = {
-		.name = AK8963_NAME,
+		.name = AKM_DRIVER_NAME,
 		.owner = THIS_MODULE,
 		.pm = &ak8963_i2c_pops,
 	},

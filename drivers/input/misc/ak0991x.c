@@ -1214,7 +1214,7 @@ struct ak0991x_data *ak0991x_probe(struct device *dev, int irq,
 	akm->input->id.bustype = bops->bustype;
 	akm->input->open = ak0991x_input_open;
 	akm->input->close = ak0991x_input_close;
-	akm->input->name = AK0991X_NAME;
+	akm->input->name = AKM_DRIVER_NAME;
 	input_set_capability(akm->input, EV_MSC, MSC_RX);
 	input_set_capability(akm->input, EV_MSC, MSC_RY);
 	input_set_capability(akm->input, EV_MSC, MSC_RZ);
