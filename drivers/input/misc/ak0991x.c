@@ -51,6 +51,7 @@
 #define AK0991X_COMPANY_ID	0x48
 #define AK09911_DEVICE_ID	0x05
 #define AK09912_DEVICE_ID	0x04
+#define AK09913_DEVICE_ID	0x08
 #define AK0991X_DATA_READY	0x01
 #define AK0991X_CNT_FREQ_10HZ	1
 #define AK0991X_CNT_FREQ_20HZ	2
@@ -68,8 +69,10 @@
 #endif
 #define AK0991X_ADDR_FUSE	0x60
 #define AK0991X_FUSE_SIZE	3
+#define AK0991X_FUSE_DUMMY	(128)
 #define AK09911_FUSE_COEF	(39322) /*0.6  in Q16 format */
 #define AK09912_FUSE_COEF	(9830)  /*0.15  in Q16 format */
+#define AK09913_FUSE_COEF	(9830)  /*0.15  in Q16 format */
 #define AK0991X_ADDR_CNTL1	0x30
 #define AK0991X_ADDR_CNTL2	0x31
 #define AK0991X_ADDR_CNTL3	0x32
@@ -351,6 +354,9 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 	} else if (AK09911_DEVICE_ID == akm->device_id) {
 		/* AK09911: nop */
 		;
+	} else if (AK09913_DEVICE_ID == akm->device_id) {
+		/* AK09911: nop */
+		;
 	} else {
 		/* Other: error */
 		dev_err(akm->dev, "%s: This device is not supported.",
@@ -375,6 +381,17 @@ static int akecs_read_fuse(struct ak0991x_data *akm)
 	int err;
 
 	dev_dbg(akm->dev, "%s called", __func__);
+
+	/* Some device does not have FUSEROM. */
+	if (AK09913_DEVICE_ID == akm->device_id)  {
+		akm->raw_to_micro_q16[0] = AK09913_FUSE_COEF;
+		akm->raw_to_micro_q16[1] = AK09913_FUSE_COEF;
+		akm->raw_to_micro_q16[2] = AK09913_FUSE_COEF;
+		akm->fuse[0] = AK0991X_FUSE_DUMMY;
+		akm->fuse[1] = AK0991X_FUSE_DUMMY;
+		akm->fuse[2] = AK0991X_FUSE_DUMMY;
+		return 0;
+	}
 
 	buffer[0] = AK0991X_ADDR_CNTL2;
 	buffer[1] = AK0991X_CNTL_FUSE;
