@@ -1,24 +1,16 @@
 /******************************************************************************
  *
- *  $Id$
- *
- * -- Copyright Notice --
- *
- * Copyright (c) 2004 Asahi Kasei Microdevices Corporation, Japan
+ * Copyright (c) 2015 Asahi Kasei Microdevices Corporation, Japan
  * All Rights Reserved.
  *
- * This software program is the proprietary program of Asahi Kasei Microdevices
- * Corporation("AKM") licensed to authorized Licensee under the respective
- * agreement between the Licensee and AKM only for use with AKM's electronic
- * compass IC.
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
  *
- * THIS SOFTWARE IS PROVIDED TO YOU "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABLITY, FITNESS FOR A PARTICULAR PURPOSE AND NON INFRINGEMENT OF
- * THIRD PARTY RIGHTS, AND WE SHALL NOT BE LIABLE FOR ANY LOSSES AND DAMAGES
- * WHICH MAY OCCUR THROUGH USE OF THIS SOFTWARE.
- *
- * -- End Asahi Kasei Microdevices Copyright Notice --
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
  ******************************************************************************/
 #include <errno.h>
