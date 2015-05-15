@@ -1,9 +1,9 @@
-## Development Environment
+## Development Environment 1
 * Board : Beagle Bone Black Rev C
 * Kernel : 3.14.37-ti-r57
 * Interface : I2C
 
-### Sample of dts
+### Sample of dts 1
 Add the following dts file to kernel directory.
 
 arch/arm/boot/dts/am335x-bone-akm-sensors.dtsi
@@ -60,4 +60,43 @@ arch/arm/boot/dts/am335x-bone-akm-sensors.dtsi
 	};
 };
 
+```
+## Development Environment 2
+* Board : Wandboard Quad
+* Kernel : 3.10.53
+* Interface : I2C
+
+### Sample of dts 2
+Edit the following dts file in kernel directory.
+
+arch/arm/boot/dts/imx6qdl-wandboard.dtsi
+```patch
+--- imx6qdl-wandboard.dtsi.org  2015-05-15 19:13:58.251174099 +0900
++++ imx6qdl-wandboard.dtsi      2015-05-15 15:36:34.387592637 +0900
+@@ -285,6 +285,25 @@
+                flip_x=<0>;
+                flip_y=<0>;
+        };
++
++       ak09912: ak09912@c {
++               status = "okay";
++               compatible = "akm,ak09912";
++               pinctrl-0 = <&pinctrl_gpio>;
++               pinctrl-names = "default";
++
++               reg = <0xc>;
++               gpios = <&gpio1 24 0>;
++               interrupt-parent = <&gpio1>;
++               interrupts = <24 0>;
++
++               axis_order_x = /bits/ 8 <0>;
++               axis_order_y = /bits/ 8 <1>;
++               axis_order_z = /bits/ 8 <2>;
++               axis_sign_x = /bits/ 8 <0>;
++               axis_sign_y = /bits/ 8 <0>;
++               axis_sign_z = /bits/ 8 <0>;
++       };
+ };
+
+ &i2c3 {
 ```
