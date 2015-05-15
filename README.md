@@ -66,6 +66,20 @@ arch/arm/boot/dts/am335x-bone-akm-sensors.dtsi
 * Kernel : 3.10.53
 * Interface : I2C
 
+### Add BIN_ATTR definition
+Old kernel does not have the definition of ```__BIN_ATTR```.
+You need to add the following lines in ```ak0991x.c```. Theese lines are copied from the file ```include/linux/sysfs.h``` in Kernel 3.14 source.
+```C
+#ifndef __BIN_ATTR
+#define __BIN_ATTR(_name, _mode, _read, _write, _size) {	\
+	.attr = { .name = __stringify(_name), .mode = _mode }	\
+	.read   = _read,					\
+	.write  = _write					\
+	.size   = _size,					\
+}
+#endif
+```
+
 ### Sample of dts 2
 Edit the following dts file in kernel directory.
 
