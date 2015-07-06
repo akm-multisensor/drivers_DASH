@@ -72,9 +72,9 @@ You need to add the following lines in ```ak0991x.c```. Theese lines are copied 
 ```C
 #ifndef __BIN_ATTR
 #define __BIN_ATTR(_name, _mode, _read, _write, _size) {	\
-	.attr = { .name = __stringify(_name), .mode = _mode }	\
+	.attr = { .name = __stringify(_name), .mode = _mode },	\
 	.read   = _read,					\
-	.write  = _write					\
+	.write  = _write,					\
 	.size   = _size,					\
 }
 #endif
