@@ -36,29 +36,22 @@
 /* Read/Write buffer size.*/
 #define RWBUF_SIZE		16
 
-/* Setting for CNTL1 */
+/* Setting for CNTL1 (16bit mode only) */
 #define AK8963_CNTL_PDN	0x00
-#define AK8963_CNTL_SNG	0x01
-#define AK8963_CNTL_CNT(CNT_FREQ)	(((CNT_FREQ) << 1) & 0x06)
-#define AK8963_CNTL_TEST	0x08
+#define AK8963_CNTL_SNG	0x11
+#define AK8963_CNTL_CNT_8HZ		0x12
+#define AK8963_CNTL_CNT_100HZ	0x16
+#define AK8963_CNTL_TEST	0x18
 #define AK8963_CNTL_FUSE	0x0F
-#define AK8963_CNTL(CNTL_MODE)	((CNTL_MODE) | (AK8963_CNTL_BIT))
 /* Setting for CNTL2 */
 #define AK8963_CNTL_RESET	0x01
 
-#ifdef AK8963_14BIT_MODE
-#define AK8963_CNTL_BIT	0x00
-#define AK8963_FUSE_COEF	(39322) /*0.6  in Q16 format */
-#else
 #define AK8963_CNTL_BIT	0x10
 #define AK8963_FUSE_COEF	(9830)  /*0.15  in Q16 format */
-#endif
 
 /* Other parameters */
 #define AK8963_COMPANY_ID	0x48
 #define AK8963_DATA_READY	0x01
-#define AK8963_CNT_FREQ_8HZ	1
-#define AK8963_CNT_FREQ_100HZ	3
 
 /* Register Address and parameters */
 #define AK8963_ADDR_WIA		0x00
@@ -757,11 +750,11 @@ static ssize_t attr_continuous_store(struct device *dev,
 		next_interval = -1;
 	} else if (125 > interval) {
 		/* the fastest */
-		next_mode = AK8963_CNTL_CNT(AK8963_CNT_FREQ_100HZ);
+		next_mode = AK8963_CNTL_CNT_100HZ;
 		next_interval = 10;
 	} else {
 		/* the slowest */
-		next_mode = AK8963_CNTL_CNT(AK8963_CNT_FREQ_8HZ);
+		next_mode = AK8963_CNTL_CNT_8HZ;
 		next_interval = 125;
 	}
 
