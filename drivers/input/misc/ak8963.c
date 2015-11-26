@@ -948,14 +948,14 @@ static ssize_t bin_attr_info_read(
 	return (size < AK8963_INFO_SIZE) ? size : AK8963_INFO_SIZE;
 }
 
-#define __BIN_ATTR(name_, mode_, size_, private_, read_, write_) \
-	{ \
-		.attr	= { .name = __stringify(name_), .mode = mode_ }, \
-		.size	= size_, \
-		.private = private_, \
-		.read	= read_, \
-		.write   = write_, \
-	}
+#ifndef __BIN_ATTR
+#define __BIN_ATTR(_name, _mode, _read, _write, _size) {   \
+	.attr = { .name = __stringify(_name), .mode = _mode }, \
+	.read   = _read,  \
+	.write  = _write, \
+	.size   = _size,  \
+}
+#endif
 
 static struct device_attribute ak8963_attributes[] = {
 	__ATTR(interval,   0660, attr_interval_show, attr_interval_store),
@@ -970,8 +970,7 @@ static struct device_attribute ak8963_attributes[] = {
 };
 
 static struct bin_attribute ak8963_bin_attributes[] = {
-	__BIN_ATTR(info, 0440, AK8963_INFO_SIZE, NULL,
-			bin_attr_info_read, NULL),
+	__BIN_ATTR(info, 0440, bin_attr_info_read, NULL, AK8963_INFO_SIZE),
 };
 
 static int create_sysfs_interfaces(struct ak8963_data *akm)
@@ -1031,11 +1030,63 @@ static void ak8963_input_close(struct input_dev *dev)
 	ak8963_close(akm);
 }
 
+static void ak8963_set_axis(struct ak8963_data *akm)
+{
+	struct device_node *node = akm->dev->of_node;
+	int i;
+
+	if (node) {
+		/* Get from device node */
+		/* parameters are declared as 'unsigned char' */
+		if (of_property_read_u8(node, "axis_order_x",
+					&akm->axis_order[0]) != 0)
+			goto SET_DEFAULT_AXIS;
+		if (of_property_read_u8(node, "axis_order_y",
+					&akm->axis_order[1]) != 0)
+			goto SET_DEFAULT_AXIS;
+		if (of_property_read_u8(node, "axis_order_z",
+					&akm->axis_order[2]) != 0)
+			goto SET_DEFAULT_AXIS;
+		if (of_property_read_u8(node, "axis_sign_x",
+					&akm->axis_sign[0]) != 0)
+			goto SET_DEFAULT_AXIS;
+		if (of_property_read_u8(node, "axis_sign_y",
+					&akm->axis_sign[1]) != 0)
+			goto SET_DEFAULT_AXIS;
+		if (of_property_read_u8(node, "axis_sign_z",
+					&akm->axis_sign[2]) != 0)
+			goto SET_DEFAULT_AXIS;
+	} else {
+		/* platform data is NULL, use default value. */
+		if (!akm->pdata)
+			goto SET_DEFAULT_AXIS;
+
+		/* Get from pdata */
+		for (i = 0; i < 3; i++) {
+			akm->axis_order[i] = akm->pdata->axis_order[i];
+			akm->axis_sign[i] = akm->pdata->axis_sign[i];
+		}
+	}
+
+	dev_dbg(akm->dev, "%s : axis=[%d,%d,%d] sign=[%d,%d,%d]", __func__,
+		akm->axis_order[0], akm->axis_order[1], akm->axis_order[2],
+		akm->axis_sign[0], akm->axis_sign[1], akm->axis_sign[2]);
+	return;
+
+SET_DEFAULT_AXIS:
+	dev_err(akm->dev, "%s: Axis info read failed. Use default value.",
+			__func__);
+	/* set default axis value */
+	for (i = 0; i < 3; i++) {
+		akm->axis_order[i] = i;
+		akm->axis_sign[i] = 0;
+	}
+}
+
 struct ak8963_data *ak8963_probe(struct device *dev, int irq,
 		const struct ak8963_bus_ops *bops)
 {
 	struct ak8963_data *akm;
-	int i;
 	int err = 0;
 	/* platform data will not be able to use with device tree */
 
@@ -1057,20 +1108,8 @@ struct ak8963_data *ak8963_probe(struct device *dev, int irq,
 	atomic_set(&akm->selftest, 0);
 	akm->irq = irq;
 	akm->pdata = dev->platform_data;
-	/* Axis info */
-	if (akm->pdata) {
-		/* copy from pdata */
-		for (i = 0; i < 3; i++) {
-			akm->axis_order[i] = akm->pdata->axis_order[i];
-			akm->axis_sign[i] = akm->pdata->axis_sign[i];
-		}
-	} else {
-		/* set default value */
-		for (i = 0; i < 3; i++) {
-			akm->axis_order[i] = i;
-			akm->axis_sign[i] = 0;
-		}
-	}
+	/* Set axis info */
+	ak8963_set_axis(akm);
 
 	err = ak8963_device_power_on(akm);
 	if (err) {

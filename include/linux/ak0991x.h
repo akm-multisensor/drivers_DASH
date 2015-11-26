@@ -18,6 +18,8 @@
 #define MSC_RY  MSC_PULSELED
 #define MSC_RZ  MSC_GESTURE
 #define MSC_ST2 MSC_RAW
+#define MSC_TSL MSC_SCAN
+#define MSC_TSH (MSC_SCAN + 1)
 
 #ifdef __KERNEL__
 struct ak0991x_platform_data {
