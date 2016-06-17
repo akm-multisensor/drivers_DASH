@@ -53,11 +53,9 @@
 
 /* Other parameters */
 #define AK0991X_COMPANY_ID	0x48
-#define AK09911_DEVICE_ID	0x05
-#define AK09912_DEVICE_ID	0x04
-#define AK09913_DEVICE_ID	0x08
-#define AK09915_DEVICE_ID	0x10
-#define AK09916_DEVICE_ID	0x09
+#define AK09915D_DEVICE_ID	0x10
+#define AK09915D_INFO_ID	0x02
+#define AK09916D_DEVICE_ID	0x0B
 #define AK0991X_DATA_READY	0x01
 #define AK0991X_CNT_FREQ_10HZ	1
 #define AK0991X_CNT_FREQ_20HZ	2
@@ -140,7 +138,7 @@ struct ak0991x_data {
 	atomic_t	cntl1;
 	/* IRQ number.  0:not set,  <0:set. */
 	int		irq;
-	/* A buffer to save FUSE ROM value */
+	/* A buffer to save FUSE ROM (only for dummy value) */
 	unsigned char	fuse[AK0991X_FUSE_SIZE];
 	/* scale factor for raw data */
 	s32		raw_to_micro_q16[AK0991X_NUM_AXIS];
@@ -382,14 +380,12 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 	}
 
 	switch (akm->device_id) {
-	case AK09912_DEVICE_ID:
-		atomic_set(&akm->cntl1, AK0991X_NSF(AK0991X_DEFAULT_NSF));
+	case AK09915D_DEVICE_ID:
+		if (buffer[3] != AK09915D_INFO_ID)
+			goto CHECKDEVICE_ERR;
 		break;
-	case AK09911_DEVICE_ID:
-	case AK09913_DEVICE_ID:
-	case AK09915_DEVICE_ID:
-	case AK09916_DEVICE_ID:
-		/* AK0991x: nop */
+	case AK09916D_DEVICE_ID:
+		/* device id is OK.*/
 		break;
 	default:
 		/* Other: error */
@@ -417,53 +413,13 @@ static int akecs_read_fuse(struct ak0991x_data *akm)
 
 	dev_dbg(akm->dev, "%s called", __func__);
 
-	/* Some device does not have FUSEROM. */
-	if ((AK09913_DEVICE_ID == akm->device_id) ||
-		(AK09915_DEVICE_ID == akm->device_id) ||
-		(AK09916_DEVICE_ID == akm->device_id))  {
-		for (i = 0; i < AK0991X_NUM_AXIS; i++) {
-			akm->raw_to_micro_q16[i] = AK0991X_FUSE_015Q16;
-			akm->fuse[i] = AK0991X_FUSE_DUMMY;
-		}
-		return 0;
+	/* Supported device does not have FUSEROM. */
+	for (i = 0; i < AK0991X_NUM_AXIS; i++) {
+		akm->raw_to_micro_q16[i] = AK0991X_FUSE_015Q16;
+		akm->fuse[i] = AK0991X_FUSE_DUMMY;
 	}
-
-	buffer[0] = AK0991X_ADDR_CNTL2;
-	buffer[1] = AK0991X_CNTL_FUSE;
-	err = akm->bops->txdata(akm->dev, buffer, sizeof(buffer));
-	if (err) {
-		dev_err(akm->dev, "%s: Can not set to fuse access mode.",
-			__func__);
-		return err;
-	}
-
-	akm->fuse[0] = AK0991X_ADDR_FUSE;
-	err = akm->bops->rxdata(akm->dev, akm->fuse, AK0991X_FUSE_SIZE);
-	if (err) {
-		dev_err(akm->dev, "%s: Can not read the FUSEROM.", __func__);
-		return err;
-	}
-
-	if (AK09911_DEVICE_ID == akm->device_id) {
-		for (i = 0; i < AK0991X_NUM_AXIS; i++)
-			akm->raw_to_micro_q16[i] = ((akm->fuse[i] + 128)
-					* AK0991X_FUSE_060Q16) >> 7;
-	} else if (AK09912_DEVICE_ID == akm->device_id)  {
-		for (i = 0; i < AK0991X_NUM_AXIS; i++)
-			akm->raw_to_micro_q16[i] = ((akm->fuse[i] + 128)
-					* AK0991X_FUSE_015Q16) >> 8;
-	}
-
-	dev_dbg(akm->dev, "%s: FUSE = 0x%02x, 0x%02x, 0x%02x", __func__,
-		akm->fuse[0],
-		akm->fuse[1],
-		akm->fuse[2]);
-	dev_dbg(akm->dev, "%s: R2M  = %d, %d, %d", __func__,
-		akm->raw_to_micro_q16[0],
-		akm->raw_to_micro_q16[1],
-		akm->raw_to_micro_q16[2]);
-
-	return akecs_setmode_powerdown(akm);
+	/* always success */
+	return 0;
 }
 
 static s64 get_time_ns(void)
@@ -817,13 +773,7 @@ static ssize_t attr_nsf_show(struct device *dev,
 
 	dev_dbg(dev, "%s called", __func__);
 
-	if (akm->device_id != AK09912_DEVICE_ID)
-		return -ENXIO;
-
-	read_cntl = (uint8_t)atomic_read(&akm->cntl1);
-
-	read_cntl = ((read_cntl >> 5) & 0x03);
-	return scnprintf(buf, PAGE_SIZE, "%d", read_cntl);
+	return -ENXIO;
 }
 
 static ssize_t attr_nsf_store(struct device *dev,
@@ -834,25 +784,7 @@ static ssize_t attr_nsf_store(struct device *dev,
 	long nsf;
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
-
-	if (NULL == buf)
-		return -EINVAL;
-
-	if (0 == count)
-		return 0;
-
-	if (akm->device_id != AK09912_DEVICE_ID)
-		return -ENXIO;
-
-	if (kstrtol(buf, 10, &nsf))
-		return -EINVAL;
-
-	if ((nsf < 0) || (3 < nsf))
-		return -EINVAL;
-
-	atomic_set(&akm->cntl1, AK0991X_NSF(nsf));
-
-	return count;
+	return 0;
 }
 
 /*********** selftest (TEXT) ***********/
@@ -1132,7 +1064,7 @@ static ssize_t bin_attr_info_read(
 	info[0] = akm->company_id;
 	info[1] = akm->device_id;
 
-	/* copy ASA value from cache */
+	/* copy dummy ASA value from cache */
 	n = AK0991X_WIA_SIZE;
 	memcpy(&info[n], akm->fuse, AK0991X_FUSE_SIZE);
 	/* copy info */
@@ -1377,7 +1309,7 @@ struct ak0991x_data *ak0991x_probe(struct device *dev, int irq,
 
 	if (akm->irq) {
 		err = request_threaded_irq(akm->irq, NULL, ak0991x_irq,
-				IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+				IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 				dev_name(akm->dev), akm);
 		if (err) {
 			dev_err(dev, "%s: request irq failed.", __func__);

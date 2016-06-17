@@ -155,11 +155,17 @@ static const struct i2c_device_id ak0991x_id[] = {
 MODULE_DEVICE_TABLE(i2c, ak0991x_id);
 
 static const struct of_device_id ak0991x_of_match[] = {
+#ifdef CONFIG_INPUT_AK0991X
 	{ .compatible = "akm,ak09911", },
 	{ .compatible = "akm,ak09912", },
 	{ .compatible = "akm,ak09913", },
 	{ .compatible = "akm,ak09915", },
 	{ .compatible = "akm,ak09916", },
+#endif
+#ifdef CONFIG_INPUT_AK0991X_OD
+	{ .compatible = "akm,ak09915d", },
+	{ .compatible = "akm,ak09916d", },
+#endif
 	{ },
 };
 MODULE_DEVICE_TABLE(of, ak0991x_of_match);
