@@ -1,6 +1,6 @@
 # Development Environment
 * Board : Beagle Bone Black Rev C
-* Kernel : 3.14.37-ti-r57
+* Kernel : 4.6.3-bone3
 * Interface : I2C
 
 ## Sample of dts
@@ -13,6 +13,6 @@ arch/arm/boot/dts/am335x-bone-akm-sensors.dtsi
 Apply the patch to the kernel.
 
 ~~~
-$ patch -p0 < bbb_3.14.37.patch
+$ patch -p0 < bbb_4.6.3.patch
 ~~~
 

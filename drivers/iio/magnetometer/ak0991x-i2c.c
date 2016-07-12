@@ -160,6 +160,11 @@ static const struct of_device_id ak0991x_of_match[] = {
 	{ .compatible = "akm,ak09911", },
 	{ .compatible = "akm,ak09912", },
 	{ .compatible = "akm,ak09913", },
+	{ .compatible = "akm,ak09915", },
+	{ .compatible = "akm,ak09915d", },
+	{ .compatible = "akm,ak09916", },
+	{ .compatible = "akm,ak09916d", },
+	{ .compatible = "akm,ak09918", },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, ak0991x_of_match);

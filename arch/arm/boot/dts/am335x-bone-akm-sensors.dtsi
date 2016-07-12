@@ -6,21 +6,23 @@
  * published by the Free Software Foundation.
  */
 
-&ocp {
+#include <dt-bindings/board/am335x-bbw-bbb-base.h>
+
+&am33xx_pinmux {
 	/* i2c */
-	P9_17_pinmux {
-		status = "disabled";
+	i2c1_pins: pinmux_i2c1_pins {
+		pinctrl-single,pins = <
+			/* spi0_d1.i2c1_sda, SLEWCTRL_SLOW | INPUT_PULLUP | MODE2 */
+			BONE_P9_18 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE2)
+			/* spi0_cs0.i2c1_scl, SLEWCTRL_SLOW | INPUT_PULLUP | MODE2 */
+			BONE_P9_17 (PIN_INPUT_PULLUP | SLEWCTRL_FAST | MUX_MODE2)
+		>;
 	};
-	P9_18_pinmux {
-		status = "disabled";
-	};
-	/* AKM irq pin */
-	P9_23_pinmux {
-		status = "disabled";
-	};
-	/* AKM reset pin */
-	P9_27_pinmux {
-		status = "disabled";
+	akm_compass_irq_pins: pinmux_akm_compass_irq_pins {
+		pinctrl-single,pins = <
+			/* CAP_TSC gpmc_a1.gpio1_17, INPUT | MODE7 */
+			BONE_P9_23 (PIN_INPUT_PULLDOWN | MUX_MODE7)
+		>;
 	};
 };
 
@@ -35,7 +37,7 @@
 		status = "okay";
 		compatible = "akm,ak09912";
 		pinctrl-names = "default";
-		pinctrl-0 = <&gpio1_17_pins>;
+		pinctrl-0 = <&akm_compass_irq_pins>;
 
 		reg = <0xc>;
 		gpios = <&gpio1 17 0>;
