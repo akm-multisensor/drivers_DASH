@@ -1,14 +1,27 @@
-diff --git a/arch/arm/boot/dts/am335x-boneblack.dts b/arch/arm/boot/dts/am335x-boneblack.dts
-index 11e4a16..e1a2fbe 100644
---- a/arch/arm/boot/dts/am335x-boneblack.dts
-+++ b/arch/arm/boot/dts/am335x-boneblack.dts
-@@ -93,3 +93,6 @@
- 		};
- 	};
+diff --git a/arch/arm/boot/dts/omap5-board-common.dtsi b/arch/arm/boot/dts/omap5-board-common.dtsi
+index 914bf4c..d5d1837 100644
+--- a/arch/arm/boot/dts/omap5-board-common.dtsi
++++ b/arch/arm/boot/dts/omap5-board-common.dtsi
+@@ -638,7 +638,7 @@
+ };
+ 
+ &mcspi2 {
+-	pinctrl-names = "default";
++	pinctrl-names = "disabled";
+ 	pinctrl-0 = <&mcspi2_pins>;
+ };
+ 
+diff --git a/arch/arm/boot/dts/omap5-uevm.dts b/arch/arm/boot/dts/omap5-uevm.dts
+index 60b3fbb..f1bc140 100644
+--- a/arch/arm/boot/dts/omap5-uevm.dts
++++ b/arch/arm/boot/dts/omap5-uevm.dts
+@@ -51,3 +51,6 @@
+ 		<&gpio9 1 GPIO_ACTIVE_HIGH>,	/* TCA6424A P00, LS OE */
+ 		<&gpio7 1 GPIO_ACTIVE_HIGH>;	/* GPIO 193, HPD */
  };
 +
 +/* AKM sensor */
-+#include "am335x-bone-akm-sensors.dtsi"
++#include "omap5-akm-sensors.dtsi"
 diff --git a/drivers/iio/magnetometer/Kconfig b/drivers/iio/magnetometer/Kconfig
 index 021dc53..16cf1fc 100644
 --- a/drivers/iio/magnetometer/Kconfig

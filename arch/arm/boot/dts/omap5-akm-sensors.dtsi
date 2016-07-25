@@ -1,0 +1,61 @@
+/*
+ * Copyright (C) 2016 Asahi Kasei Microdevices
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+&omap5_pmx_core {
+	/* i2c */
+	i2c2_pins: pinmux_i2c2_pins {
+		pinctrl-single,pins = <
+			OMAP5_IOPAD(0x1B8, PIN_INPUT_PULLUP | MUX_MODE0)	/* i2c2_scl */
+			OMAP5_IOPAD(0x1BA, PIN_INPUT_PULLUP | MUX_MODE0)	/* i2c2_sda */
+		>;
+	};
+	/* for AK0991X (CMOS level pin) */
+//	akm_compass_irq_pins: pinmux_akm_compass_irq_pins {
+//		pinctrl-single,pins = <
+//			OMAP5_IOPAD(0x102, PIN_INPUT_PULLDOWN | MUX_MODE6)	/* mcspi2_cs0.gpio7_196 */
+//		>;
+//	};
+
+	/* for AK0991XD (open drain pin) */
+	akm_compass_irq_pins: pinmux_akm_compass_irq_pins {
+		pinctrl-single,pins = <
+			OMAP5_IOPAD(0x102, PIN_INPUT_PULLUP | MUX_MODE6)	/* mcspi2_cs0.gpio7_196 */
+		>;
+	};
+};
+
+&i2c2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c2_pins>;
+
+	status = "okay";
+	clock-frequency = <100000>;
+
+	ak09916d: ak09916d@c {
+		status = "okay";
+		compatible = "akm,ak09916d";
+		pinctrl-names = "default";
+		pinctrl-0 = <&akm_compass_irq_pins>;
+
+		reg = <0xc>;
+		gpios = <&gpio7 4 0>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <4 0>;
+
+		axis_order_x = /bits/ 8 <0>;
+		axis_order_y = /bits/ 8 <1>;
+		axis_order_z = /bits/ 8 <2>;
+		axis_sign_x = /bits/ 8 <0>;
+		axis_sign_y = /bits/ 8 <0>;
+		axis_sign_z = /bits/ 8 <0>;
+	};
+};
+
