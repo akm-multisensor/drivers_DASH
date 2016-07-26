@@ -28,30 +28,22 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
 #include <linux/ak0991x.h>
 #include <linux/input.h>
 
-#define AKM_TRACE                1
+#define AKM_TRACE                0
+#define AKM_PRINT_HEX            0
 #define AKMD_SEQUENTIAL_MEASURE  1
 #define AKMD_SEQUENTIAL_TIMER    1
+#define AKMD_MEASURE_FREQ_HZ     10
 
 
 #define TO_STRING_(x)  #x
 #define TO_STRING(x)   TO_STRING_(x)
-
-#define EVENT_CODE_MAGV_X         MSC_RX
-#define EVENT_CODE_MAGV_Y         MSC_RY
-#define EVENT_CODE_MAGV_Z         MSC_RZ
-#define EVENT_CODE_ORIENT_STATUS  MSC_ST2
-
-#ifdef DEBUG
-#define DEBUG_OUTPUT  printf
-#else
-#define DEBUG_OUTPUT
-#endif
 
 #if AKM_TRACE
 #define FUNCTION_TRACE  printf("%s\n", __func__);
@@ -71,19 +63,19 @@ enum {
 };
 
 char const *const SYSFS_CONTINUOUS_FILE_NAME = TO_STRING(
-        / sys / devices / virtual / input / input1 / continuous);
+        /sys/devices/virtual/input/input1/continuous);
 char const *const SYSFS_INFO_FILE_NAME = TO_STRING(
-        / sys / devices / virtual / input / input1 / info);
+        /sys/devices/virtual/input/input1/info);
 char const *const SYSFS_INTERVAL_FILE_NAME = TO_STRING(
-        / sys / devices / virtual / input / input1 / interval);
+        /sys/devices/virtual/input/input1/interval);
 char const *const SYSFS_NSF_FILE_NAME = TO_STRING(
-        / sys / devices / virtual / input / input1 / nsf);
+        /sys/devices/virtual/input/input1/nsf);
 char const *const SYSFS_RESET_FILE_NAME = TO_STRING(
-        / sys / devices / virtual / input / input1 / reset);
+        /sys/devices/virtual/input/input1/reset);
 char const *const SYSFS_SELFTEST_FILE_NAME = TO_STRING(
-        / sys / devices / virtual / input / input1 / selftest);
+        /sys/devices/virtual/input/input1/selftest);
 char const *const SYSFS_SINGLE_FILE_NAME = TO_STRING(
-        / sys / devices / virtual / input / input1 / single);
+        /sys/devices/virtual/input/input1/single);
 char const *const INPUT_EVENT_DEVICE_PATH = "/dev/input/event1";
 
 static volatile bool is_prompt_request = false;
@@ -98,8 +90,9 @@ static void signal_handler(int sig)
 }
 
 int get_mag_data(
-    int input_dev_fd,
-    int data[4])
+    int      input_dev_fd,
+    int32_t  data[4],
+    uint64_t *ts)
 {
     const int          EVENT_NUM = 64;
     struct input_event iev[EVENT_NUM];
@@ -139,16 +132,21 @@ int get_mag_data(
 
     for (i = 0; i < nread; i++) {
         if (iev[i].type == EV_SYN) {
-            printf("Dat:%8d, %8d, %8d, 0x%02X\n",
+#if AKM_PRINT_HEX
+            printf("Dat:%8d, %8d, %8d, 0x%02X, Ts:0x%LX\n",
                    data[0],
                    data[1],
                    data[2],
-                   data[3]);
-            printf("Dat:%8.2f, %8.2f, %8.2f, 0x%02X\n",
+                   data[3],
+                   *ts);
+#else
+            printf("Dat:%8.2f, %8.2f, %8.2f, 0x%02X, Ts:%f\n",
                    data[0] / 65536.f,
                    data[1] / 65536.f,
                    data[2] / 65536.f,
-                   data[3]);
+                   data[3],
+                   *ts / 1000000000.f);
+#endif
         }
 
         if (iev[i].type != EV_MSC) {
@@ -156,20 +154,29 @@ int get_mag_data(
         }
 
         switch (iev[i].code) {
-        case EVENT_CODE_MAGV_X:
+        case MSC_RX:
             data[0] = iev[i].value;
             break;
 
-        case EVENT_CODE_MAGV_Y:
+        case MSC_RY:
             data[1] = iev[i].value;
             break;
 
-        case EVENT_CODE_MAGV_Z:
+        case MSC_RZ:
             data[2] = iev[i].value;
             break;
 
-        case EVENT_CODE_ORIENT_STATUS:
+        case MSC_ST2:
             data[3] = iev[i].value;
+            break;
+
+        /* low byte must be the first */
+        case MSC_TSL:
+            *ts = (uint32_t)iev[i].value;
+            break;
+
+        case MSC_TSH:
+            *ts += ((uint64_t)iev[i].value << 32);
             break;
 
         default:
@@ -314,10 +321,12 @@ int set_interval(int val)
 
 int action_loop(int input_dev_fd)
 {
-    bool is_loop_continue = true;
-    int  err;
-    int  data[4];
-    char msg[20];
+    bool     is_loop_continue = true;
+    int      err;
+    uint32_t ms;
+    int32_t  data[4];
+    uint64_t ts;
+    char     msg[20];
 
     FUNCTION_TRACE
 
@@ -326,13 +335,14 @@ int action_loop(int input_dev_fd)
     }
 
     // Init
+    ms = 1000 / AKMD_MEASURE_FREQ_HZ;
     data[0] = data[1] = data[2] = data[3] = 0;
 
 #if AKMD_SEQUENTIAL_MEASURE
 #if AKMD_SEQUENTIAL_TIMER
-    err = set_interval(100);
+    err = set_interval(ms);
 #else
-    err = perform_continuous(20);
+    err = perform_continuous(ms);
 #endif
 
     if (err < 0) {
@@ -349,14 +359,14 @@ int action_loop(int input_dev_fd)
         if (err < 0) {
             return err;
         }
+
+        usleep(ms * 1000);
 #endif
 
         // Get data
-        if (get_mag_data(input_dev_fd, data)) {
+        if (get_mag_data(input_dev_fd, data, &ts)) {
             fprintf(stderr, "get_mag_data failed.\n");
         }
-
-        usleep(100000);
 
         if (true == is_prompt_request) {
             /* Reset flag */
