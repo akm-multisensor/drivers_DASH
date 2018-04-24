@@ -9,7 +9,7 @@
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  */
@@ -24,11 +24,14 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <string.h>
 
 #define AKM_TRACE 1
 #define AKMD_SEQUENTIAL_MEASURE	1
 #define AKMD_SEQUENTIAL_TIMER	1
 #define AKMD_INTERVAL			100
+#define AKMD_BUF_LENGTH			100
+#define AKMD_WATERMARK			1
 
 #define TO_STRING_(x) #x
 #define TO_STRING(x) TO_STRING_(x)
@@ -45,42 +48,123 @@
 #endif
 
 #if AKM_TRACE
-#define FUNCTION_TRACE	printf("%s\n", __func__);
+#define FUNCTION_TRACE	printf("%s\n", __func__)
 #else
 #define FUNCTION_TRACE
 #endif
 
+
 enum {
-	continuous = 0,
-	/*info,*/
-	interval,
+	buf_enable = 0,
+	continuous,
+	/* info, */
+	frequency,
 	nsf,
 	reset,
 	selftest,
 	single,
-	num_of_attr
+	in_magn_x_raw,
+	in_magn_y_raw,
+	in_magn_z_raw,
+	watermark,
+	element_x_en,
+	element_y_en,
+	element_z_en,
+	num_of_attr,
 };
 
-char const * const SYSFS_CONTINUOUS_FILE_NAME = TO_STRING( /sys/bus/iio/devices/iio:device1/continuous );
-/*char const * const SYSFS_INFO_FILE_NAME       = TO_STRING( /sys/bus/iio/devices/iio:device1/info );*/
-char const * const SYSFS_INTERVAL_FILE_NAME   = TO_STRING( /sys/bus/iio/devices/iio:device1/interval );
-char const * const SYSFS_NSF_FILE_NAME        = TO_STRING( /sys/bus/iio/devices/iio:device1/nsf );
-char const * const SYSFS_RESET_FILE_NAME      = TO_STRING( /sys/bus/iio/devices/iio:device1/reset );
-char const * const SYSFS_SELFTEST_FILE_NAME   = TO_STRING( /sys/bus/iio/devices/iio:device1/selftest );
-char const * const SYSFS_SINGLE_FILE_NAME     = TO_STRING( /sys/bus/iio/devices/iio:device1/single );
-char const * const SYSFS_MAG_X_RAW            = TO_STRING( /sys/bus/iio/devices/iio:device1/in_magn_x_raw );
-char const * const SYSFS_MAG_Y_RAW            = TO_STRING( /sys/bus/iio/devices/iio:device1/in_magn_y_raw );
-char const * const SYSFS_MAG_Z_RAW            = TO_STRING( /sys/bus/iio/devices/iio:device1/in_magn_z_raw );
+char const * const SYSFS_BUF_ENABLE_FILE_NAME	= TO_STRING( /sys/bus/iio/devices/iio:device1/buffer/enable );
+char const * const SYSFS_CONTINUOUS_FILE_NAME	= TO_STRING( /sys/bus/iio/devices/iio:device1/continuous );
+char const * const SYSFS_FREQUENCY_FILE_NAME	= TO_STRING( /sys/bus/iio/devices/iio:device1/in_magn_sampling_frequency );
+char const * const SYSFS_NSF_FILE_NAME			= TO_STRING( /sys/bus/iio/devices/iio:device1/nsf );
+char const * const SYSFS_RESET_FILE_NAME		= TO_STRING( /sys/bus/iio/devices/iio:device1/reset );
+char const * const SYSFS_SELFTEST_FILE_NAME		= TO_STRING( /sys/bus/iio/devices/iio:device1/selftest );
+char const * const SYSFS_SINGLE_FILE_NAME		= TO_STRING( /sys/bus/iio/devices/iio:device1/single );
+char const * const SYSFS_MAG_X_RAW_FILE_NAME	= TO_STRING( /sys/bus/iio/devices/iio:device1/in_magn_x_raw );
+char const * const SYSFS_MAG_Y_RAW_FILE_NAME	= TO_STRING( /sys/bus/iio/devices/iio:device1/in_magn_y_raw );
+char const * const SYSFS_MAG_Z_RAW_FILE_NAME	= TO_STRING( /sys/bus/iio/devices/iio:device1/in_magn_z_raw );
+char const * const SYSFS_WATERMARK_FILE_NAME	= TO_STRING( /sys/bus/iio/devices/iio:device1/watermark );
+char const * const SYSFS_EBL_X_EN_FILE_NAME		= TO_STRING( /sys/bus/iio/devices/iio:device1/scan_elements/in_magn_x_en );
+char const * const SYSFS_EBL_Y_EN_FILE_NAME		= TO_STRING( /sys/bus/iio/devices/iio:device1/scan_elements/in_magn_y_en );
+char const * const SYSFS_EBL_Z_EN_FILE_NAME		= TO_STRING( /sys/bus/iio/devices/iio:device1/scan_elements/in_magn_z_en );
 
 static volatile bool is_prompt_request = false;
 
 static volatile int g_fds[num_of_attr];
 
-static void signal_handler( int sig )
+void signal_handler( int sig )
 {
 	if ( sig == SIGINT ) {
 		is_prompt_request = true;
 	}
+}
+
+int perform_enable( int arg_en )
+{
+	char val_en[1];
+	int err;
+
+	if(g_fds[arg_en]){
+		switch(arg_en){
+			case buf_enable:
+				g_fds[arg_en] = open(SYSFS_BUF_ENABLE_FILE_NAME, O_RDWR);
+				break;
+			case element_x_en:
+				g_fds[arg_en] = open(SYSFS_EBL_X_EN_FILE_NAME, O_RDWR);
+				break;
+			case element_y_en:
+				g_fds[arg_en] = open(SYSFS_EBL_Y_EN_FILE_NAME, O_RDWR);
+				break;
+			case element_z_en:
+				g_fds[arg_en] = open(SYSFS_EBL_Z_EN_FILE_NAME, O_RDWR);
+				break;
+			default:
+				break;
+		}
+	}
+
+	if (g_fds[arg_en] < 0) {
+		err = errno;
+		fprintf(stderr, "ecompass: failed to open set - enable - errno = %d\n", err);
+		return err;
+	}
+
+	val_en[0] = '1';
+
+	if (write(g_fds[arg_en], val_en, sizeof(val_en)) < 0) {
+		err = errno;
+		fprintf(stderr, "ecompass: failed to perform set - enable - errno = %d\n", err);
+		return err;
+	}
+
+	usleep(100);
+	return 0;
+}
+
+int perform_watermark( int arg_wm )
+{
+	int err;
+	char val_string[10];
+
+	if (g_fds[watermark] < 0) {
+		g_fds[watermark] = open(SYSFS_WATERMARK_FILE_NAME, O_RDWR);
+		if (g_fds[watermark] < 0) {
+			err = errno;
+			fprintf(stderr, "ecompass: failed to open set - watermark - errno = %d\n", err);
+			return err;
+		}
+	}
+
+	memset(val_string, 0, sizeof(val_string));
+	snprintf(val_string, sizeof(val_string), "%d", arg_wm);
+
+	if (write(g_fds[watermark], val_string, sizeof(val_string)) < 0) {
+		err = errno;
+		fprintf(stderr, "ecompass: failed to perform set-watermark - errno = %d\n", err);
+		return err;
+	}
+
+	return 0;
 }
 
 int get_mag_data(int data[4])
@@ -91,10 +175,11 @@ int get_mag_data(int data[4])
 	int fd;
 	int err = 0;
 
-	FUNCTION_TRACE
+	FUNCTION_TRACE;
 
 	/* Read X */
-	fd = open(SYSFS_MAG_X_RAW, O_RDONLY);
+	fd = open(SYSFS_MAG_X_RAW_FILE_NAME, O_RDONLY);
+
 	if (fd < 0) {
 		err = errno;
 		fprintf(stderr, "ecompass: failed to open magn_x - errno = %d\n", err);
@@ -110,7 +195,7 @@ int get_mag_data(int data[4])
 	}
 
 	/* Read Y */
-	fd = open(SYSFS_MAG_Y_RAW, O_RDONLY);
+	fd = open(SYSFS_MAG_Y_RAW_FILE_NAME, O_RDONLY);
 	if (fd < 0) {
 		err = errno;
 		fprintf(stderr, "ecompass: failed to open magn_y - errno = %d\n", err);
@@ -126,7 +211,7 @@ int get_mag_data(int data[4])
 	}
 
 	/* Read Z */
-	fd = open(SYSFS_MAG_Z_RAW, O_RDONLY);
+	fd = open(SYSFS_MAG_Z_RAW_FILE_NAME, O_RDONLY);
 	if (fd < 0) {
 		err = errno;
 		fprintf(stderr, "ecompass: failed to open magn_z - errno = %d\n", err);
@@ -144,12 +229,12 @@ int get_mag_data(int data[4])
 	return 0;
 }
 
-int perform_singleshot()
+int perform_singleshot( void )
 {
 	int err;
 	char value[1];
 
-	FUNCTION_TRACE
+	FUNCTION_TRACE;
 
 	if (g_fds[single] < 0) {
 		g_fds[single] = open(SYSFS_SINGLE_FILE_NAME, O_WRONLY);
@@ -176,7 +261,7 @@ int perform_continuous(int mode)
 	int err;
 	char value[8];
 
-	FUNCTION_TRACE
+	FUNCTION_TRACE;
 
 	if (g_fds[continuous] < 0) {
 		g_fds[continuous] = open(SYSFS_CONTINUOUS_FILE_NAME, O_WRONLY);
@@ -198,12 +283,12 @@ int perform_continuous(int mode)
 	return 0;
 }
 
-int perform_selftest()
+int perform_selftest( void )
 {
 	int err;
 	char value[1];
 
-	FUNCTION_TRACE
+	FUNCTION_TRACE;
 
 	if (g_fds[selftest] < 0) {
 		g_fds[selftest] = open(SYSFS_SELFTEST_FILE_NAME, O_WRONLY);
@@ -225,34 +310,34 @@ int perform_selftest()
 	return 0;
 }
 
-int perform_interval( int val )
+int perform_interval( int arg_interval )
 {
 	int err;
 	char val_string[10];
 
-	FUNCTION_TRACE
+	FUNCTION_TRACE;
 
-	if (g_fds[interval] < 0) {
-		g_fds[interval] = open(SYSFS_INTERVAL_FILE_NAME, O_RDWR);
-		if (g_fds[interval] < 0) {
+	if (g_fds[frequency] < 0) {
+		g_fds[frequency] = open(SYSFS_FREQUENCY_FILE_NAME, O_RDWR);
+		if (g_fds[frequency] < 0) {
 			err = errno;
-			fprintf(stderr, "ecompass: failed to open set-interval - errno = %d\n", err);
+			fprintf(stderr, "ecompass: failed to open set - frequency - errno = %d\n", err);
 			return err;
 		}
 	}
 
-	if (val > 999999999) {
-		val = 999999999;
+	if (arg_interval > 999999999) {
+		arg_interval = 999999999;
 	}
-	if (val < 0) {
-		val = 0;
+	if (arg_interval < 0) {
+		arg_interval = 0;
 	}
 	memset(val_string, 0, sizeof(val_string));
-	snprintf(val_string, sizeof(val_string), "%d", val);
+	snprintf(val_string, sizeof(val_string), "%d", arg_interval);
 
-	if (write(g_fds[interval], val_string, sizeof(val_string)) < 0) {
+	if (write(g_fds[frequency], val_string, sizeof(val_string)) < 0) {
 		err = errno;
-		fprintf(stderr, "ecompass: failed to perform set-interval - errno = %d\n", err);
+		fprintf(stderr, "ecompass: failed to perform set-frequency - errno = %d\n", err);
 		return err;
 	}
 
@@ -266,25 +351,35 @@ int action_loop(void)
 	int data[4];
 	char msg[20];
 
-	FUNCTION_TRACE
 
-	// Init
+	FUNCTION_TRACE;
+
+	/* Init */
 	data[0] = data[1] = data[2] = data[3] = 0;
+
+	err = perform_enable(element_x_en);
+	err = perform_enable(element_y_en);
+	err = perform_enable(element_z_en);
+	err = perform_enable(buf_enable);
 
 #if AKMD_SEQUENTIAL_MEASURE
 #if AKMD_SEQUENTIAL_TIMER
+	err = perform_watermark(AKMD_WATERMARK);
 	err = perform_interval(AKMD_INTERVAL);
 #else
 	err = perform_continuous(AKMD_INTERVAL);
 #endif
+
+
 	if (err < 0) {
 		return err;
 	}
+
 	while( is_loop_continue ) {
 #else
 	while( is_loop_continue ) {
 
-		// single-shot
+		/* single-shot */
 		err = perform_singleshot();
 		if (err < 0) {
 			return err;
@@ -292,11 +387,11 @@ int action_loop(void)
 #endif
 		usleep(AKMD_INTERVAL * 1000);
 
-		// Get data
+		/* Get data */
 		if (get_mag_data(data)) {
 			fprintf(stderr, "get_mag_data failed.\n");
 		} else {
-			printf("Dat:%8.2f, %8.2f, %8.2f\n",
+			printf("Data:%8.2f, %8.2f, %8.2f\n",
 					data[0]/65536.f,
 					data[1]/65536.f,
 					data[2]/65536.f);
@@ -313,22 +408,22 @@ int action_loop(void)
 			fgets(msg, 20, stdin);
 			/* Process */
 			switch(msg[0]){
-			case '1':
-				break;
-			case '2':
-				break;
-			case '3':
-				break;
-			case 'q':
-				is_loop_continue = false;
-				break;
-			default:
-				break;
+				case '1':
+					break;
+				case '2':
+					break;
+				case '3':
+					break;
+				case 'q':
+					is_loop_continue = false;
+					break;
+				default:
+					break;
 			}
 		}
 	}
 
-	// Stop measure
+	/* Stop measure */
 #if AKMD_SEQUENTIAL_MEASURE
 #if AKMD_SEQUENTIAL_TIMER
 	err = perform_interval(-1);
@@ -349,15 +444,15 @@ int main( int argc, char** argv )
 	int err = 0;
 	int i;
 
-	// Init
+	/* Init */
 	for (i=0; i<num_of_attr; i++) {
 		g_fds[i] = -1;
 	}
 
-	// SIGNAL
+	/* SIGNAL */
 	signal( SIGINT, signal_handler );
 
-	// Main function
+	/* Main function */
 	err = action_loop();
 
 	if (err < 0) {
@@ -376,4 +471,5 @@ int main( int argc, char** argv )
 	}
 	return err;
 }
+
 
