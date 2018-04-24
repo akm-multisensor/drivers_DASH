@@ -34,6 +34,7 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <linux/iio/buffer.h>
+#include <linux/iio/buffer_impl.h>
 #include <linux/iio/trigger.h>
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/triggered_buffer.h>
@@ -61,6 +62,7 @@
 #define AK09915D_INFO_ID	0x02
 #define AK09916_DEVICE_ID	0x09
 #define AK09916D_DEVICE_ID	0x0B
+#define AK09917D_DEVICE_ID	0x0D
 #define AK09918_DEVICE_ID	0x0C
 #define AK0991X_DATA_READY	0x01
 
@@ -85,6 +87,7 @@
 #define AK09913_FUSE_COEF	(9830)	/*0.15	in Q16 format */
 #define AK09915_FUSE_COEF	(9830)	/*0.15	in Q16 format */
 #define AK09916_FUSE_COEF	(9830)	/*0.15	in Q16 format */
+#define AK09917_FUSE_COEF	(9830)	/*0.15	in Q16 format */
 #define AK09918_FUSE_COEF	(9830)	/*0.15	in Q16 format */
 #define AK0991X_ADDR_CNTL1	0x30
 #define AK0991X_ADDR_CNTL2	0x31
@@ -133,6 +136,13 @@
 #define AK09916_TEST_HILIM_Y	(200)
 #define AK09916_TEST_LOLIM_Z	(-1000)
 #define AK09916_TEST_HILIM_Z	(-200)
+/* AK09917 selftest threshold */
+#define AK09917_TEST_LOLIM_X	(-200)
+#define AK09917_TEST_HILIM_X	(200)
+#define AK09917_TEST_LOLIM_Y	(-200)
+#define AK09917_TEST_HILIM_Y	(200)
+#define AK09917_TEST_LOLIM_Z	(-1000)
+#define AK09917_TEST_HILIM_Z	(-150)
 /* AK09918 selftest threshold (TBD) */
 #define AK09918_TEST_LOLIM_X	(-200)
 #define AK09918_TEST_HILIM_X	(200)
@@ -147,8 +157,13 @@
 #define AK09913_FIFO_SIZE	  (0)
 #define AK09915_FIFO_SIZE	  (32)
 #define AK09916_FIFO_SIZE	  (0)
+#define AK09917_FIFO_SIZE	  (32)
 #define AK09918_FIFO_SIZE	  (0)
 #define AK0991X_FIFO_SIZE_MAX (32)
+
+/* AK0991X register endian */
+#define AK0991X_LITTLE_ENDIAN	 0
+#define AK0991X_BIG_ENDIAN	 1
 
 #define AK0991X_WAIT_TIME_MS	10
 #define AK0991X_CNTL_DELAY_US	100
@@ -157,12 +172,13 @@
 #define AK0991X_INFO_SIZE (AK0991X_WIA_SIZE + AK0991X_FUSE_SIZE)
 
 /* macro functions */
-#define AK0991X_NSF(NSF) (((NSF) & 0x03) << 5)
-#define AK0991X_WM(WM)	 (((WM) - 1) & 0x1F)
-#define IS_PDN(mode)	 (!(mode))
-#define IS_SNG(mode)	 ((mode) == AK0991X_CNTL_SNG)
-#define IS_TST(mode)	 ((mode) == AK0991X_CNTL_TEST)
-#define IS_FUS(mode)	 ((mode) == AK0991X_CNTL_FUSE)
+#define AK0991X_NSF(NSF)	(((NSF) & 0x03) << 5)
+#define AK0991X_WM(WM)		(((WM) - 1) & 0x1F)
+#define MAKE_S16(HDA, LDA)	(s16)(((u16)(HDA) << 8) | (u16)(LDA))
+#define IS_PDN(mode)		((mode) == AK0991X_CNTL_PDN)
+#define IS_SNG(mode)		((mode) == AK0991X_CNTL_SNG)
+#define IS_TST(mode)		((mode) == AK0991X_CNTL_TEST)
+#define IS_FUS(mode)		((mode) == AK0991X_CNTL_FUSE)
 
 #define AK0991X_MAG_CHANNEL(axis, index) {	\
 	.type = IIO_MAGN,\
@@ -204,6 +220,7 @@ enum AKM_DEVICES {
 	AK09915D,
 	AK09916,
 	AK09916D,
+	AK09917D,
 	AK09918,
 	SUPPORTED_DEVICES
 };
@@ -236,6 +253,9 @@ struct ak0991x_part_info {
 	/* 1: the device has NSF */
 	u8	has_nsf;
 
+	/* 0: 3 axis Measurement Magnetic Data are not  reversed */
+	/* 1: 3 axis Measurement Magnetic Data are  reversed */
+	u8	endian;
 	/* selfttest threshold */
 	s16	test_lolim[NUM_OF_AXIS];
 	s16	test_hilim[NUM_OF_AXIS];
@@ -316,6 +336,7 @@ static u16 ak09912_freq_table[] = {0, 10, 20, 50, 100};
 static u16 ak09913_freq_table[] = {0, 10, 20, 50, 100};
 static u16 ak09915_freq_table[] = {0, 1, 10, 20, 50, 100, 200};
 static u16 ak09916_freq_table[] = {0, 10, 20, 50, 100};
+static u16 ak09917_freq_table[] = {0, 1, 10, 20, 50, 100, 200};
 static u16 ak09918_freq_table[] = {0, 10, 20, 50, 100};
 
 /* register value correspond to the freq_table */
@@ -325,6 +346,8 @@ static u8 ak09913_reg_table[] = {AK0991X_CNTL_PDN, 0x02, 0x04, 0x06, 0x08};
 static u8 ak09915_reg_table[] = {AK0991X_CNTL_PDN, 0x0C, 0x02, 0x04, 0x06,
 								 0x08, 0x0A};
 static u8 ak09916_reg_table[] = {AK0991X_CNTL_PDN, 0x02, 0x04, 0x06, 0x08};
+static u8 ak09917_reg_table[] = {AK0991X_CNTL_PDN, 0x0C, 0x02, 0x04, 0x06,
+								 0x08, 0x0A};
 static u8 ak09918_reg_table[] = {AK0991X_CNTL_PDN, 0x02, 0x04, 0x06, 0x08};
 
 /* channel spec */
@@ -344,11 +367,12 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		.name		= "AK09911",
 		.fuse_shift	= 7,
 		.has_nsf	= 0,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09911_freq_table,
 		.reg_table	= ak09911_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09911_freq_table),
 		.fuse_coef	= AK09911_FUSE_COEF,
-		.irqflag = IRQF_TRIGGER_NONE,
+		.irqflag	= IRQF_TRIGGER_NONE,
 		.test_lolim = {
 			AK09911_TEST_LOLIM_X,
 			AK09911_TEST_LOLIM_Y,
@@ -367,11 +391,12 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		.name		= "AK09912",
 		.fuse_shift	= 8,
 		.has_nsf	= 1,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09912_freq_table,
 		.reg_table	= ak09912_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09912_freq_table),
 		.fuse_coef	= AK09912_FUSE_COEF,
-		.irqflag = IRQF_TRIGGER_RISING,
+		.irqflag	= IRQF_TRIGGER_RISING,
 		.test_lolim = {
 			AK09912_TEST_LOLIM_X,
 			AK09912_TEST_LOLIM_Y,
@@ -390,11 +415,12 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		.name		= "AK09913",
 		.fuse_shift	= 0,
 		.has_nsf	= 0,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09913_freq_table,
 		.reg_table	= ak09913_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09913_freq_table),
 		.fuse_coef	= AK09913_FUSE_COEF,
-		.irqflag = IRQF_TRIGGER_NONE,
+		.irqflag	= IRQF_TRIGGER_NONE,
 		.test_lolim = {
 			AK09913_TEST_LOLIM_X,
 			AK09913_TEST_LOLIM_Y,
@@ -413,6 +439,7 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		.name		= "AK09915",
 		.fuse_shift	= 0,
 		.has_nsf	= 0,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09915_freq_table,
 		.reg_table	= ak09915_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09915_freq_table),
@@ -436,6 +463,7 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		.name		= "AK09915D",
 		.fuse_shift	= 0,
 		.has_nsf	= 0,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09915_freq_table,
 		.reg_table	= ak09915_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09915_freq_table),
@@ -459,6 +487,7 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		.name		= "AK09916",
 		.fuse_shift	= 0,
 		.has_nsf	= 0,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09916_freq_table,
 		.reg_table	= ak09916_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09916_freq_table),
@@ -482,6 +511,7 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		.name		= "AK09916D",
 		.fuse_shift	= 0,
 		.has_nsf	= 0,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09916_freq_table,
 		.reg_table	= ak09916_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09916_freq_table),
@@ -499,17 +529,42 @@ static const struct ak0991x_part_info ak0991x_part_info_array[] = {
 		},
 		.device_fifo_size = AK09916_FIFO_SIZE,
 	},
+	[AK09917D] = {
+		.company_id	= AK0991X_COMPANY_ID,
+		.device_id	= AK09917D_DEVICE_ID,
+		.name		= "AK09917D",
+		.fuse_shift	= 0,
+		.has_nsf	= 1,
+		.endian		= AK0991X_BIG_ENDIAN,
+		.freq_table	= ak09917_freq_table,
+		.reg_table	= ak09917_reg_table,
+		.num_freq	= ARRAY_SIZE(ak09917_freq_table),
+		.fuse_coef	= AK09917_FUSE_COEF,
+		.irqflag	= IRQF_TRIGGER_FALLING,
+		.test_lolim = {
+			AK09917_TEST_LOLIM_X,
+			AK09917_TEST_LOLIM_Y,
+			AK09917_TEST_LOLIM_Z
+		},
+		.test_hilim = {
+			AK09917_TEST_HILIM_X,
+			AK09917_TEST_HILIM_Y,
+			AK09917_TEST_HILIM_Z
+		},
+		.device_fifo_size = AK09917_FIFO_SIZE,
+	},
 	[AK09918] = {
 		.company_id	= AK0991X_COMPANY_ID,
 		.device_id	= AK09918_DEVICE_ID,
 		.name		= "AK09918",
 		.fuse_shift	= 0,
 		.has_nsf	= 0,
+		.endian		= AK0991X_LITTLE_ENDIAN,
 		.freq_table	= ak09918_freq_table,
 		.reg_table	= ak09918_reg_table,
 		.num_freq	= ARRAY_SIZE(ak09918_freq_table),
 		.fuse_coef	= AK09918_FUSE_COEF,
-		.irqflag = IRQF_TRIGGER_NONE,
+		.irqflag	= IRQF_TRIGGER_NONE,
 		.test_lolim = {
 			AK09918_TEST_LOLIM_X,
 			AK09918_TEST_LOLIM_Y,
@@ -529,11 +584,11 @@ static int akecs_check_measure_mode(struct ak0991x_data *akm,
 {
 	u8 i; /* the type of num_freq */
 
-	if (AK0991X_CNTL_SNG == mode)
+	if (IS_SNG(mode))
 		/* single measurement mode */
 		return 0;
 
-	if (AK0991X_CNTL_TEST == mode)
+	if (IS_TST(mode))
 		/* selft test mode */
 		return 0;
 
@@ -552,6 +607,7 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 	unsigned char buffer[3];
 	unsigned char cntl1, cntl2;
 	int err = 0;
+	struct iio_dev *indio_dev = iio_priv_to_dev(akm);
 
 	dev_info(akm->dev, "%s called: mode=%d", __func__, mode);
 
@@ -582,7 +638,7 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 	}
 
 	/* set previous timestamp */
-	akm->prev_time_ns = iio_get_time_ns();
+	akm->prev_time_ns = iio_get_time_ns(indio_dev);
 
 	/* set write buffer */
 	buffer[0] = AK0991X_ADDR_CNTL1;
@@ -609,7 +665,7 @@ static int akecs_setmode_measure_with_timer(
 		return -EINVAL;
 
 	/* timer is used with single/test mode only */
-	if ((AK0991X_CNTL_SNG != mode) && (AK0991X_CNTL_TEST == mode))
+	if (!(IS_SNG(mode)) && IS_TST(mode))
 		return -EINVAL;
 
 	err = akecs_setmode_measure(akm, mode);
@@ -624,8 +680,9 @@ static int akecs_setmode_measure_with_timer(
 }
 
 /* If power down mode is set while DRDY is HIGH,
-  (i.e. before work que function read out the measurement data)
-  DRDY bit is reset to 0, then work que function will fail.*/
+ * (i.e. before work que function read out the measurement data)
+ * DRDY bit is reset to 0, then work que function will fail.
+ */
 static int akecs_setmode_powerdown(struct ak0991x_data *akm)
 {
 	unsigned char buffer[2];
@@ -659,7 +716,7 @@ static int akecs_setmode_reset(struct ak0991x_data *akm)
 
 	dev_dbg(akm->dev, "%s called", __func__);
 
-	if (0 <= atomic_read(&akm->interval)) {
+	if (atomic_read(&akm->interval >= 0)) {
 		cancel_delayed_work_sync(&akm->work);
 		atomic_set(&akm->interval, -1);
 	}
@@ -687,7 +744,7 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 {
 	unsigned char buffer[AK0991X_INFO_SIZE];
 	unsigned char *bufp = buffer;
-	int err;
+	int i, err;
 	s32 coef;
 	u8 shift;
 
@@ -701,7 +758,7 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 		return err;
 	}
 
-	if (AK0991X_COMPANY_ID != buffer[0]) {
+	if (buffer[0] != AK0991X_COMPANY_ID) {
 		dev_err(akm->dev, "%s: The device is not AKM.", __func__);
 		return -ENXIO;
 	}
@@ -738,6 +795,10 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 		/* AK09916: copy part info */
 		akm->part_info = &ak0991x_part_info_array[AK09916D];
 		break;
+	case AK09917D_DEVICE_ID:
+		/* AK09917: copy part info */
+		akm->part_info = &ak0991x_part_info_array[AK09917D];
+		break;
 	case AK09918_DEVICE_ID:
 		/* AK09918: copy part info */
 		akm->part_info = &ak0991x_part_info_array[AK09918];
@@ -757,15 +818,14 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 	 * So we have to use dummy/fixed value instead.
 	 */
 	if (shift == 0) {
-		akm->raw_to_micro_q16[0] = coef;
-		akm->raw_to_micro_q16[1] = coef;
-		akm->raw_to_micro_q16[2] = coef;
 		/* copy read data to 'info' buffer */
 		memcpy(akm->info, buffer, AK0991X_WIA_SIZE);
-		/* put dummy FUSE value */
-		akm->info[AK0991X_WIA_SIZE + 0] = AK0991X_FUSE_DUMMY;
-		akm->info[AK0991X_WIA_SIZE + 1] = AK0991X_FUSE_DUMMY;
-		akm->info[AK0991X_WIA_SIZE + 2] = AK0991X_FUSE_DUMMY;
+
+		for (i = 0; i < NUM_OF_AXIS; i++) {
+			akm->raw_to_micro_q16[i] = coef;
+			/* put dummy FUSE value */
+			akm->info[AK0991X_WIA_SIZE + i] = AK0991X_FUSE_DUMMY;
+		}
 		return 0;
 	}
 
@@ -787,7 +847,8 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 	}
 
 	/* calculate conversion coefficiency, which converts from raw to
-	 * microtesla in q16 format */
+	 * microtesla in q16 format
+	 */
 	akm->raw_to_micro_q16[0] = ((bufp[0] + 128) * coef) >> shift;
 	akm->raw_to_micro_q16[1] = ((bufp[1] + 128) * coef) >> shift;
 	akm->raw_to_micro_q16[2] = ((bufp[2] + 128) * coef) >> shift;
@@ -836,7 +897,7 @@ static int ak0991x_set_samp_freq(struct ak0991x_data *akm, int freq)
 
 	mode = akm->part_info->reg_table[idx];
 
-	if (mode == AK0991X_CNTL_PDN)
+	if (IS_PDN(mode))
 		return akecs_setmode_powerdown(akm);
 	else
 		return akecs_setmode_measure(akm, mode);
@@ -865,7 +926,10 @@ static void ak0991x_convert_3axis_raw_to_micro_q16(
 		return;
 
 	for (i = 0; i < 3; i++) {
-		tmp16 = (s16)(((u16)src[i * 2 + 1] << 8) | (u16)src[i * 2]);
+		if (akm->part_info->endian == AK0991X_LITTLE_ENDIAN)
+			tmp16 = MAKE_S16(src[i * 2 + 1], src[i * 2]);
+		else
+			tmp16 = MAKE_S16(src[i * 2], src[i * 2 + 1]);
 		dst[i] = (s32)tmp16 * akm->raw_to_micro_q16[i];
 	}
 }
@@ -938,7 +1002,7 @@ static int ak0991x_batch_read(struct iio_dev *indio_dev, int mode, s64 now)
 		return err;
 
 	/* If operation is self-test mode, don't report event */
-	if (mode == AK0991X_CNTL_TEST) {
+	if (IS_TST(mode)) {
 		/* Before axis swap, in Q16. */
 		s32 tmp32[3];
 		/* convert data to 32-bit microtesla unit in q16 format */
@@ -999,7 +1063,7 @@ static int ak0991x_batch_fifo_read(struct iio_dev *indio_dev, int mode, s64 now)
 		return 0;
 
 	/* If operation is self-test mode, don't report event */
-	if (mode == AK0991X_CNTL_TEST) {
+	if (IS_TST(mode)) {
 		/* Before axis swap, in Q16. */
 		s32 tmp32[3];
 		/* convert data to 32-bit microtesla unit in q16 format */
@@ -1046,7 +1110,7 @@ static int ak0991x_send_flush(struct iio_dev *indio_dev)
 {
 	struct ak0991x_data *akm = iio_priv(indio_dev);
 	unsigned char data[AK0991X_DATA_SIZE * AK0991X_FIFO_SIZE_MAX];
-	s64 now = iio_get_time_ns();
+	s64 now = iio_get_time_ns(indio_dev);
 
 	memset(data, 0, sizeof(data));
 
@@ -1062,7 +1126,7 @@ static int ak0991x_send_flush(struct iio_dev *indio_dev)
 static int read_and_event(struct iio_dev *indio_dev)
 {
 	struct ak0991x_data *akm = iio_priv(indio_dev);
-	s64 now = iio_get_time_ns();
+	s64 now = iio_get_time_ns(indio_dev);
 	int mode;
 	int samples;
 	int err;
@@ -1072,7 +1136,7 @@ static int read_and_event(struct iio_dev *indio_dev)
 	mode = atomic_read(&akm->mode);
 
 	/* If operation is already canceled, don't report values */
-	if (mode == AK0991X_CNTL_PDN) {
+	if (IS_PDN(mode)) {
 		dev_info(akm->dev, "%s: Operation canceled.", __func__);
 		return 0;
 	}
@@ -1083,7 +1147,8 @@ static int read_and_event(struct iio_dev *indio_dev)
 		atomic_set(&akm->mode, AK0991X_CNTL_PDN);
 
 	/* If device has FIFO, the DD reads the all data of FIFO.
-	 * Otherwise it reads 1 data. */
+	 * Otherwise it reads 1 data.
+	 */
 	if (akm->part_info->device_fifo_size > 0) {
 		mutex_lock(&akm->fifo_mutex);
 		samples = ak0991x_batch_fifo_read(indio_dev, mode, now);
@@ -1101,7 +1166,7 @@ static int read_and_event(struct iio_dev *indio_dev)
 static int flush_fifo(struct iio_dev *indio_dev)
 {
 	struct ak0991x_data *akm = iio_priv(indio_dev);
-	s64 now = iio_get_time_ns();
+	s64 now = iio_get_time_ns(indio_dev);
 	int freq;
 	int mode;
 	int samples;
@@ -1117,7 +1182,7 @@ static int flush_fifo(struct iio_dev *indio_dev)
 	mode = atomic_read(&akm->mode);
 
 	/* If operation is already canceled, don't report values */
-	if (!atomic_read(&akm->flush_device_fifo) || mode == AK0991X_CNTL_PDN) {
+	if (!atomic_read(&akm->flush_device_fifo) || IS_PDN(mode)) {
 		dev_info(akm->dev, "%s: Operation canceled.", __func__);
 		return 0;
 	}
@@ -1219,16 +1284,16 @@ static void ak0991x_flush_handler(struct work_struct *work)
 }
 
 /*
-static int ak0991x_try_reenable(struct iio_trigger *trig)
-{
-	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
-	struct ak0991x_data *akm = iio_priv(indio_dev);
-
-	dev_dbg(akm->dev, "%s called", __func__);
-
-	return 0;
-}
-*/
+ *static int ak0991x_try_reenable(struct iio_trigger *trig)
+ *{
+ *	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
+ *	struct ak0991x_data *akm = iio_priv(indio_dev);
+ *
+ *	dev_dbg(akm->dev, "%s called", __func__);
+ *
+ *	return 0;
+ *}
+ */
 
 static const struct iio_trigger_ops ak0991x_trigger_ops = {
 	.set_trigger_state = ak0991x_set_trigger_state,
@@ -1343,16 +1408,16 @@ static ssize_t attr_nsf_store(struct device *dev,
 	if (!akm->part_info->has_nsf)
 		return -ENXIO;
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	if (kstrtol(buf, 10, &nsf))
 		return -EINVAL;
 
-	if ((nsf < 0) || (3 < nsf))
+	if ((nsf < 0) || (nsf > 3))
 		return -EINVAL;
 
 	buffer[0] = AK0991X_ADDR_CNTL1;
@@ -1367,7 +1432,7 @@ static ssize_t attr_nsf_store(struct device *dev,
 }
 
 static IIO_DEVICE_ATTR(nsf,
-		S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+		0660, /* S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP */
 		attr_nsf_show,
 		attr_nsf_store,
 		0);
@@ -1409,10 +1474,10 @@ static ssize_t attr_watermark_store(struct device *dev,
 	if (fifo_size == 0)
 		return -ENXIO;
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	if (kstrtol(buf, 10, &wm))
@@ -1427,7 +1492,7 @@ static ssize_t attr_watermark_store(struct device *dev,
 }
 
 static IIO_DEVICE_ATTR(watermark,
-		S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+		0660, /* S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP */
 		attr_watermark_show,
 		attr_watermark_store,
 		0);
@@ -1470,7 +1535,7 @@ static ssize_t attr_flush_store(struct device *dev,
 }
 
 static IIO_DEVICE_ATTR(flush,
-		S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+		0660, /* S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP */
 		attr_flush_show,
 		attr_flush_store,
 		0);
@@ -1494,17 +1559,17 @@ static ssize_t attr_selftest_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	return akecs_setmode_measure_with_timer(akm, AK0991X_CNTL_TEST);
 }
 
 static IIO_DEVICE_ATTR(selftest,
-		S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+		0660, /* S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP */
 		attr_selftest_show,
 		attr_selftest_store,
 		0);
@@ -1520,10 +1585,10 @@ static ssize_t attr_reset_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	/* soft reset */
@@ -1533,7 +1598,7 @@ static ssize_t attr_reset_store(struct device *dev,
 }
 
 static IIO_DEVICE_ATTR(reset,
-		S_IWUSR | S_IWGRP,
+		0220, /* S_IWUSR | S_IWGRP */
 		NULL,
 		attr_reset_store,
 		0);
@@ -1563,7 +1628,7 @@ static ssize_t attr_info_show(struct device *dev,
 }
 
 static IIO_DEVICE_ATTR(info,
-		S_IRUSR | S_IRGRP,
+		0440, /* S_IRUSR | S_IRGRP */
 		attr_info_show,
 		NULL,
 		0);
@@ -1585,14 +1650,14 @@ static ssize_t attr_axismap_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	/* this function access buf[10] */
-	if (11 > count)
+	if (count < 11)
 		return -EINVAL;
 
 	/* initialize buffer */
@@ -1625,7 +1690,7 @@ static ssize_t attr_axismap_store(struct device *dev,
 }
 
 static IIO_DEVICE_ATTR(axismap,
-		S_IWUSR | S_IWGRP,
+		0220, /* S_IWUSR | S_IWGRP */
 		NULL,
 		attr_axismap_store,
 		0);
@@ -1705,7 +1770,7 @@ static ssize_t attr_debug_show(struct device *dev,
 }
 
 static IIO_DEVICE_ATTR(debug,
-		S_IRUSR | S_IRGRP,
+		0440, /* S_IRUSR | S_IRGRP */
 		attr_debug_show,
 		NULL,
 		0);
@@ -1869,7 +1934,6 @@ SET_DEFAULT_AXIS:
 		akm->axis_order[i] = i;
 		akm->axis_sign[i] = 0;
 	}
-	return;
 }
 
 struct iio_dev *ak0991x_probe(struct device *dev, int irq,
@@ -1904,7 +1968,8 @@ struct iio_dev *ak0991x_probe(struct device *dev, int irq,
 	/* -1 means 'selftest is not done yet' */
 	atomic_set(&akm->selftest, -1);
 	/* don't initialize with default value.
-	 * because some device does not have NSF */
+	 * because some device does not have NSF
+	 */
 	atomic_set(&akm->cntl1, 0);
 	mutex_init(&akm->buffer_mutex);
 	mutex_init(&akm->fifo_mutex);
@@ -1928,12 +1993,9 @@ struct iio_dev *ak0991x_probe(struct device *dev, int irq,
 	}
 
 	err = akecs_checkdevice(akm);
-	if (err < 0) {
-		ak0991x_device_power_off(akm);
-		goto err_check_device;
-	}
-
 	ak0991x_device_power_off(akm);
+	if (err < 0)
+		goto err_check_device;
 
 	/*** setup iio parameter ***/
 	indio_dev->dev.parent = dev;

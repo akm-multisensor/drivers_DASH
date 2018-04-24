@@ -1,6 +1,6 @@
 # Development Environment
 * Board : OMAP5432 uEVM
-* Kernel : 4.6.3-armv7-lpae-x1
+* Kernel : 4.12.14-armv7-lpae-x4
 * Interface : I2C
 
 ## Kernel source
@@ -17,6 +17,6 @@ arch/arm/boot/dts/omap5-akm-sensors.dtsi
 Apply the patch to the kernel.
 
 ~~~
-$ patch -p0 < omap5_4.6.3.patch
+$ patch -p0 < omap5_4.12.14.patch
 ~~~
 

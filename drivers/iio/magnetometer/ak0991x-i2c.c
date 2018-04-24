@@ -164,6 +164,7 @@ static const struct of_device_id ak0991x_of_match[] = {
 	{ .compatible = "akm,ak09915d", },
 	{ .compatible = "akm,ak09916", },
 	{ .compatible = "akm,ak09916d", },
+	{ .compatible = "akm,ak09917d", },
 	{ .compatible = "akm,ak09918", },
 	{ },
 };

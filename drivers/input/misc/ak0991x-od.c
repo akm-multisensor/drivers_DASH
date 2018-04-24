@@ -56,6 +56,7 @@
 #define AK09915D_DEVICE_ID	0x10
 #define AK09915D_INFO_ID	0x02
 #define AK09916D_DEVICE_ID	0x0B
+#define AK09917D_DEVICE_ID	0x0D
 #define AK0991X_DATA_READY	0x01
 #define AK0991X_CNT_FREQ_10HZ	1
 #define AK0991X_CNT_FREQ_20HZ	2
@@ -176,9 +177,9 @@ struct ak0991x_data {
  */
 static int akecs_busy_check(struct ak0991x_data *akm)
 {
-	if (AK0991X_CNTL_PDN != atomic_read(&akm->mode))
+	if (atomic_read(&akm->mode) != AK0991X_CNTL_PDN)
 		return 1;
-	if (0 <= atomic_read(&akm->interval))
+	if (atomic_read(&akm->interval) >= 0)
 		return 1;
 	return 0;
 }
@@ -197,7 +198,7 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 
 	/* Check setting value */
 	if (IS_SNG(mode)) {
-		if ((!akm->irq) || (0 <= interval))
+		if ((!akm->irq) || (interval >= 0))
 			/* 'tm_continuous' or 'single wo drdy' */
 			request_timer = 1;
 		else
@@ -205,7 +206,7 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 			request_timer = 0;
 	} else if (IS_CNT(mode)) {
 		/* interval should be positive value. */
-		if (0 > interval)
+		if (interval < 0)
 			return -EINVAL;
 		if (!akm->irq)
 			/* continuous wo drdy */
@@ -215,7 +216,7 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 			request_timer = 0;
 	} else if (IS_TST(mode)) {
 		/* interval should be negative value. */
-		if (0 <= interval)
+		if (interval >= 0)
 			return -EINVAL;
 		if (!akm->irq)
 			/* self-test wo drdy */
@@ -226,7 +227,7 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 	} else
 		return -EINVAL;
 
-	if (0 <= atomic_read(&akm->interval))
+	if (atomic_read(&akm->interval) >= 0)
 		return -EBUSY;
 
 	/* set mode */
@@ -272,8 +273,9 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 				msecs_to_jiffies(AK0991X_WAIT_TIME_MS));
 #endif
 	} else {
-		/* reserve current mode & interval for when driver is
-		 * activated */
+		/* reserve current mode & interval for when
+		 * driver is activated
+		 */
 		atomic_set(&akm->mode_rsv, atomic_read(&akm->mode));
 		atomic_set(&akm->interval_rsv, atomic_read(&akm->interval));
 		atomic_set(&akm->mode, AK0991X_CNTL_PDN);
@@ -284,8 +286,9 @@ static int akecs_setmode_measure(struct ak0991x_data *akm,
 }
 
 /* If power down mode is set while DRDY is HIGH,
-  (i.e. before work que function read out the measurement data)
-  DRDY bit is reset to 0, then work que function will fail.*/
+ * (i.e. before work que function read out the measurement data)
+ * DRDY bit is reset to 0, then work que function will fail.
+ */
 static int akecs_setmode_powerdown(struct ak0991x_data *akm)
 {
 	unsigned char buffer[2];
@@ -293,7 +296,7 @@ static int akecs_setmode_powerdown(struct ak0991x_data *akm)
 
 	dev_dbg(akm->dev, "%s called", __func__);
 
-	if (0 <= atomic_read(&akm->interval)) {
+	if (atomic_read(&akm->interval) >= 0) {
 #ifndef USE_DELAY_WORK
 		hrtimer_cancel(&akm->poll_timer);
 		cancel_work_sync(&akm->dwork.work);
@@ -325,7 +328,7 @@ static int akecs_setmode_reset(struct ak0991x_data *akm)
 
 	dev_dbg(akm->dev, "%s called", __func__);
 
-	if (0 <= atomic_read(&akm->interval)) {
+	if (atomic_read(&akm->interval) >= 0) {
 #ifndef USE_DELAY_WORK
 		hrtimer_cancel(&akm->poll_timer);
 		cancel_work_sync(&akm->dwork.work);
@@ -386,6 +389,9 @@ static int akecs_checkdevice(struct ak0991x_data *akm)
 		break;
 	case AK09916D_DEVICE_ID:
 		/* device id is OK.*/
+		break;
+	case AK09917D_DEVICE_ID:
+	/* device id is OK.*/
 		break;
 	default:
 		/* Other: error */
@@ -473,7 +479,11 @@ static int read_and_event(struct ak0991x_data *akm)
 
 	/* report axis data: HXL & HXH / HYL & HYH / HZL & HZH */
 	for (i = 0; i < AK0991X_NUM_AXIS; i++) {
-		val = (s16)(((u16)buffer[i * 2 + 2] << 8)
+		if (akm->device_id == AK09917D_DEVICE_ID)
+			val = (s16)(((u16)buffer[i * 2 + 1] << 8)
+				| (u16)buffer[i * 2 + 2]);
+		else
+			val = (s16)(((u16)buffer[i * 2 + 2] << 8)
 				| (u16)buffer[i * 2 + 1]);
 		tmp32[i] = (s32)val * akm->raw_to_micro_q16[i];
 	}
@@ -548,7 +558,7 @@ static void ak0991x_tm_continuous(struct work_struct *work)
 			goto TRY_AGAIN;
 
 	interval = atomic_read(&akm->interval);
-	if (0 <= interval) {
+	if (interval >= 0) {
 #ifndef USE_DELAY_WORK
 #else
 		/* b. start timer with 'interval' value */
@@ -578,7 +588,6 @@ TRY_AGAIN:
 	schedule_delayed_work(&akm->work,
 			msecs_to_jiffies(AK0991X_WAIT_TIME_MS));
 #endif
-	return;
 }
 
 #ifndef USE_DELAY_WORK
@@ -641,7 +650,7 @@ static int ak0991x_open(struct ak0991x_data *akm)
 	/* restore reserved parameter */
 	mode = atomic_read(&akm->mode_rsv);
 	interval = atomic_read(&akm->interval_rsv);
-	if ((0 <= interval) && (IS_SNG(mode) || IS_CNT(mode)))
+	if ((interval >= 0) && (IS_SNG(mode) || IS_CNT(mode)))
 		ret = akecs_setmode_measure(akm, mode, interval);
 
 	return ret;
@@ -718,6 +727,7 @@ static ssize_t attr_interval_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct ak0991x_data *akm = dev_get_drvdata(dev);
+
 	dev_dbg(dev, "%s called\n", __func__);
 	return scnprintf(buf, PAGE_SIZE, "%d", atomic_read(&akm->interval));
 }
@@ -732,19 +742,19 @@ static ssize_t attr_interval_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	if (kstrtol(buf, 10, &interval))
 		return -EINVAL;
 
 	/* normalize interval value */
-	if ((0 <= interval) && (interval < AK0991X_WAIT_TIME_MS))
+	if ((interval >= 0) && (interval < AK0991X_WAIT_TIME_MS))
 		interval = AK0991X_WAIT_TIME_MS;
-	if (0 > interval)
+	if (interval < 0)
 		interval = -1;
 
 	/* Stop current measurement at first */
@@ -754,7 +764,7 @@ static ssize_t attr_interval_store(struct device *dev,
 			return err;
 	}
 
-	if (0 <= interval) {
+	if (interval >= 0) {
 		err = akecs_setmode_measure(akm, AK0991X_CNTL_SNG, interval);
 		if (err)
 			return err;
@@ -788,6 +798,7 @@ static ssize_t attr_selftest_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct ak0991x_data *akm = dev_get_drvdata(dev);
+
 	dev_dbg(dev, "%s called", __func__);
 	return scnprintf(buf, PAGE_SIZE, "%d", atomic_read(&akm->selftest));
 }
@@ -801,10 +812,10 @@ static ssize_t attr_selftest_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	/* Just start self-test operation */
@@ -826,10 +837,10 @@ static ssize_t attr_single_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	err = akecs_setmode_measure(akm, AK0991X_CNTL_SNG, -1);
@@ -852,26 +863,26 @@ static ssize_t attr_continuous_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	if (kstrtol(buf, 10, &interval))
 		return -EINVAL;
 
-	if (0 > interval) {
+	if (interval < 0) {
 		next_mode = AK0991X_CNTL_PDN;
 		next_interval = -1;
-	} else if (20 > interval) {
+	} else if (interval < 20) {
 		/* the fastest */
 		next_mode = AK0991X_CNTL_CNT(AK0991X_CNT_FREQ_100HZ);
 		next_interval = 10;
-	} else if (50 > interval) {
+	} else if (interval < 50) {
 		next_mode = AK0991X_CNTL_CNT(AK0991X_CNT_FREQ_50HZ);
 		next_interval = 20;
-	} else if (100 > interval) {
+	} else if (interval < 100) {
 		next_mode = AK0991X_CNTL_CNT(AK0991X_CNT_FREQ_20HZ);
 		next_interval = 50;
 	} else {
@@ -887,7 +898,7 @@ static ssize_t attr_continuous_store(struct device *dev,
 			return err;
 	}
 
-	if (AK0991X_CNTL_PDN == next_mode)
+	if (next_mode == AK0991X_CNTL_PDN)
 		err = akecs_setmode_powerdown(akm);
 	else
 		err = akecs_setmode_measure(akm, next_mode, next_interval);
@@ -910,10 +921,10 @@ static ssize_t attr_reset_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	/* soft reset */
@@ -931,6 +942,7 @@ static ssize_t attr_axismap_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct ak0991x_data *akm = dev_get_drvdata(dev);
+
 	dev_dbg(dev, "%s called", __func__);
 
 	return scnprintf(buf, PAGE_SIZE, "%d,%d,%d,%d,%d,%d",
@@ -955,14 +967,14 @@ static ssize_t attr_axismap_store(struct device *dev,
 
 	dev_dbg(dev, "%s called: '%s'(%zu)", __func__, buf, count);
 
-	if (NULL == buf)
+	if (buf == NULL)
 		return -EINVAL;
 
-	if (0 == count)
+	if (count == 0)
 		return 0;
 
 	/* this function access buf[10] */
-	if (11 > count)
+	if (count < 11)
 		return -EINVAL;
 
 	/* initialize buffer */
@@ -1001,6 +1013,7 @@ static ssize_t attr_debug_show(struct device *dev,
 	char *curbuf;
 	int curlen;
 	int wrlen;
+
 	dev_dbg(dev, "%s called", __func__);
 
 	curbuf = buf;
@@ -1069,7 +1082,7 @@ static ssize_t bin_attr_info_read(
 	n += AK0991X_NUM_AXIS;
 	memcpy(&info[n], akm->axis_sign, AK0991X_NUM_AXIS);
 
-	if (AK0991X_INFO_SIZE > size)
+	if (size < AK0991X_INFO_SIZE)
 		memcpy(buf, info, size);
 	else
 		memcpy(buf, info, AK0991X_INFO_SIZE);
@@ -1224,7 +1237,6 @@ struct ak0991x_data *ak0991x_probe(struct device *dev, int irq,
 
 	akm = kzalloc(sizeof(struct ak0991x_data), GFP_KERNEL);
 	if (!akm) {
-		dev_err(dev, "%s: memory allocation failed.", __func__);
 		err = -ENOMEM;
 		goto err_kzalloc;
 	}

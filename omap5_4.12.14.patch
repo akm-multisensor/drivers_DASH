@@ -4,13 +4,13 @@ index 914bf4c..d5d1837 100644
 +++ b/arch/arm/boot/dts/omap5-board-common.dtsi
 @@ -638,7 +638,7 @@
  };
- 
+
  &mcspi2 {
 -	pinctrl-names = "default";
 +	pinctrl-names = "disabled";
  	pinctrl-0 = <&mcspi2_pins>;
  };
- 
+
 diff --git a/arch/arm/boot/dts/omap5-uevm.dts b/arch/arm/boot/dts/omap5-uevm.dts
 index 60b3fbb..f1bc140 100644
 --- a/arch/arm/boot/dts/omap5-uevm.dts
@@ -29,7 +29,7 @@ index 021dc53..16cf1fc 100644
 @@ -24,6 +24,31 @@ config AK09911
  	help
  	  Deprecated: AK09911 is now supported by AK8975 driver.
- 
+
 +config IIO_AKM_MAGN_AK0991X
 +	tristate "Asahi Kasei AK0991X 3-Axis Magnetometer"
 +	select IIO_BUFFER
@@ -63,7 +63,7 @@ index dd03fe5..b18a6c5 100644
 --- a/drivers/iio/magnetometer/Makefile
 +++ b/drivers/iio/magnetometer/Makefile
 @@ -4,6 +4,9 @@
- 
+
  # When adding new entries keep the list in alphabetical order
  obj-$(CONFIG_AK8975)	+= ak8975.o
 +obj-$(CONFIG_IIO_AKM_MAGN_AK0991X) += ak0991x-iio.o

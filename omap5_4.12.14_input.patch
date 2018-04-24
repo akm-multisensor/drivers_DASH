@@ -5,7 +5,7 @@ index 1f2337a..0efd576 100644
 @@ -685,6 +685,54 @@ config INPUT_ADXL34X_SPI
  	  To compile this driver as a module, choose M here: the
  	  module will be called adxl34x-spi.
- 
+
 +#config INPUT_AK0991X
 +#	tristate "Asahi KASEI AK0991X 3-Axis Magnetometer"
 +#	default n
